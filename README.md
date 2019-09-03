@@ -33,6 +33,10 @@ Then `import osudb`, run `osudb.parse_osu(file_path)` / `osudb.parse_collection(
 
 It uses the Python module `struct` to parse primitive data.
 
+## Related projects
+
+* [OsuMusicPlayer](https://github.com/KirkSuD/OsuMusicPlayer) uses this to parse osu! databases and play music for you!
+
 ## TODO
 
 * The code is messy; clean it!
