@@ -11,8 +11,8 @@ It is written according to [the osu! wiki page](https://osu.ppy.sh/help/wiki/osu
 Currently, there are 4 databases: osu!.db, scores.db, collection.db, and presence.db.  
 But presence.db is not described on the wiki page and is not supported.
 
-Roughly tested @ 2019/08/22
- with osu!.db ver.20190816, collection.db ver.20190808, scores.db ver.20190524.
+Last test: Roughly tested @ 2020/04/29
+ with osu!.db ver.20200320, collection.db ver.20200320, scores.db ver.20190828.
 
 osu! directory path:  
 Windows: %localappdata%/osu!  

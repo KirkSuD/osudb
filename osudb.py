@@ -15,6 +15,13 @@ presence.db is not described on the wiki page and is not supported.
 Roughly tested @ 2019/08/22
 with osu!.db ver.20190816, collection.db ver.20190808, scores.db ver.20190524.
 
+Roughly tested @ 2020/04/29
+with osu!.db ver.20200320, collection.db ver.20200320, scores.db ver.20190828.
+
+2020/04/12 update:
+make a quick but bad fix for a change of beatmap information: bm[0] disappears now, all index -1.
+TODO: make a better, easier to maintain DS to hold the beatmap info.
+
 osu! directory path:
 Windows: %localappdata%/osu!
 Mac OSX: /Applications/osu!.app/Contents/Resources/drive_c/Program Files/osu!/
@@ -61,6 +68,8 @@ def parse_type(fobj, data_type):
         if bb == 0x00:
             return None
         elif bb != 0x0b:
+            ## TODO: show integers in assertion error in hexadecimal and decimal
+            ##       to make debug more convenient (cause I may inspect the file in a byte reader.
             raise AssertionError('parse_type(fobj, data_type): '
                 '1st byte(%s) of "String" not in {0x00, 0x0b}' % bb)
         strlen = parse_type(fobj, "ULEB128")
@@ -86,6 +95,11 @@ def parse_type(fobj, data_type):
 
 def parse_types(fobj, types):
     return [parse_type(fobj, i) for i in types]
+    """res = []
+    for i, j in enumerate(types):
+        #print("parse_types:", i, j)
+        res.append(parse_type(fobj, j))
+    return res"""
 
 ### Main Functions ###
 def parse_osu(file_path):
@@ -93,7 +107,11 @@ def parse_osu(file_path):
     res = parse_types(fobj, ['Int', 'Int', 'Boolean', 'DateTime', 'String', 'Int'])
     beatmaps_count = res[-1]
     res.append([])
-    beatmap_data_types = ['Int', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'Byte', 'Short', 'Short', 'Short', 'Long', 'Single', 'Single', 'Single', 'Single', 'Double', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int', 'Int', 'Int', 'Timing point+', 'Int', 'Int', 'Int', 'Byte', 'Byte', 'Byte', 'Byte', 'Short', 'Single', 'Byte', 'String', 'String', 'Short', 'String', 'Boolean', 'Long', 'Boolean', 'String', 'Long', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Int', 'Byte']
+    ## change @ 2020/04/12 due a change in Beatmap Information: Int: Size in bytes of the beatmap entry. Only present if version is less than 20191106.
+    ## so beatmap_info[0] disappears, all index has to -1.
+    ## TODO: Enhance parsed data structure, make it accessible by a key. Make it easier to maintain.
+    #beatmap_data_types = ['Int', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'Byte', 'Short', 'Short', 'Short', 'Long', 'Single', 'Single', 'Single', 'Single', 'Double', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int', 'Int', 'Int', 'Timing point+', 'Int', 'Int', 'Int', 'Byte', 'Byte', 'Byte', 'Byte', 'Short', 'Single', 'Byte', 'String', 'String', 'Short', 'String', 'Boolean', 'Long', 'Boolean', 'String', 'Long', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Int', 'Byte']
+    beatmap_data_types = ['String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'Byte', 'Short', 'Short', 'Short', 'Long', 'Single', 'Single', 'Single', 'Single', 'Double', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int', 'Int', 'Int', 'Timing point+', 'Int', 'Int', 'Int', 'Byte', 'Byte', 'Byte', 'Byte', 'Short', 'Single', 'Byte', 'String', 'String', 'Short', 'String', 'Boolean', 'Long', 'Boolean', 'String', 'Long', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Int', 'Byte']
     for _ in range(beatmaps_count):
         res[-1].append(parse_types(fobj, beatmap_data_types))
     res.append(parse_type(fobj, "Int"))
@@ -135,15 +153,24 @@ def parse_score(file_path):
     return res
 
 if __name__ == "__main__":
-    osu_db_path = r"the path of osu!.db to parse here"
-    collection_db_path = r"the path of collection.db to parse here"
-    scores_db_path = r"the path of scores.db to parse here"
+    osu_root_path = r"%localappdata%/osu!"
+    output_json_path =r"./exported_json"
 
-    osu_json = r"the path of osu!.json to save here"
-    collection_json = r"the path of collection.json to save here"
-    scores_json = r"the path of scores.json to save here"
+    import time, json, os
 
-    import time, json
+    pjoin = os.path.join ## shortcut
+
+    osu_root_path = os.path.expandvars(osu_root_path) ## https://stackoverflow.com/questions/53112401/percent-signs-in-windows-path
+    osu_db_path = pjoin(osu_root_path, "osu!.db")
+    collection_db_path = pjoin(osu_root_path, "collection.db")
+    scores_db_path = pjoin(osu_root_path, "scores.db")
+
+    output_json_path = os.path.abspath(os.path.realpath(output_json_path))
+    osu_json = pjoin(output_json_path, "osu!.json")
+    collection_json = pjoin(output_json_path, "collection.json")
+    scores_json = pjoin(output_json_path, "scores.json")
+
+    input("Press ENTER...")
 
     st = time.time()
     osu_data = parse_osu(osu_db_path)

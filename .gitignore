@@ -1,0 +1,11 @@
+# not needed
+/.vs/
+/__pycache__/
+*.pyc
+
+# personal data
+/copied_osu_db/
+/exported_csv/
+/exported_json/
+/backup/
+osudb.js
