@@ -7,5 +7,6 @@
 /copied_osu_db/
 /exported_csv/
 /exported_json/
+/serialized_db/
 /backup/
 osudb.js

@@ -30,12 +30,31 @@ Mac OSX: /Applications/osu!.app/Contents/Resources/drive_c/Program Files/osu!/
 import struct
 
 ### Helper Functions ###
+## debug, to check serialize_type is working correctly
+# def _parse_type(fobj, data_type):
+#     before = fobj.tell()
+#     res = _parse_type(fobj, data_type)
+#     after = fobj.tell()
+#     fobj.seek(before)
+#     read_bytes = fobj.read(after-before)
+#     assert fobj.tell() == after
+#     print(data_type, res)
+#     with open("./tmp.bin", "wb") as wf:
+#         serialize_type(wf, data_type, res)
+#     with open("./tmp.bin", "rb") as rf:
+#         serialized = rf.read()
+#     if read_bytes != serialized:
+#         print("Different!")
+#         print(data_type, read_bytes, serialized)
+#         input()
+#     return res
+
 def parse_type(fobj, data_type):
     """
     Read needed bytes from fobj and parse it according to data_type.
     """
     if data_type == "Boolean": ## False if 0x00 else True
-        return bool(fobj.read(1))
+        return bool(fobj.read(1)[0])
     elif data_type == "Byte": ## 1 byte int
         return fobj.read(1)[0]
     elif data_type == "DateTime": ## 8 bytes signed int
@@ -101,6 +120,62 @@ def parse_types(fobj, types):
         res.append(parse_type(fobj, j))
     return res"""
 
+def serialize_type(fobj, data_type, data):
+    """
+    Serialize data according to data_type and write it to fobj.
+    """
+    if data_type == "Boolean": ## 0 if False else 1
+        return fobj.write(bytes([1 if data else 0]))
+    elif data_type == "Byte": ## 1 byte int
+        return fobj.write(bytes([data]))
+    elif data_type == "DateTime": ## 8 bytes signed int
+        return fobj.write(struct.pack("<q", data))
+    elif data_type == "Double": ## 8 bytes floating point
+        return fobj.write(struct.pack("<d", data))
+    elif data_type == "Int": ## 4 bytes unsigned int
+        return fobj.write(struct.pack("<I", data))
+    elif data_type == "Int-Double pair": ## 0x08-Int-0x0d-Double with AssertionError
+        return fobj.write(bytes([0x08])) + serialize_type(fobj, "Int", data[0]) + \
+            fobj.write(bytes([0x0d])) + serialize_type(fobj, "Double", data[1])
+    elif data_type == "Int-Double pair*": ## int(n) - "Int-Double pair"*n
+        return serialize_type(fobj, "Int", len(data)) + \
+            sum(serialize_type(fobj, "Int-Double pair", i) for i in data)
+    elif data_type == "Long": ## 8 bytes unsigned int
+        return fobj.write(struct.pack("<Q", data))
+    elif data_type == "Short": ## 2 bytes unsigned int
+        return fobj.write(struct.pack("<H", data))
+    elif data_type == "Single": ## 4 bytes floating point
+        return fobj.write(struct.pack("<f", data))
+    elif data_type == "String": ## 0x00 or 0x0b - ULE128(n) - UTF-8(length=n)
+        if data is None:
+            return fobj.write(bytes([0x00]))
+        data = data.encode("utf-8")
+        return fobj.write(bytes([0x0b])) + serialize_type(fobj, "ULEB128", len(data)) + \
+            fobj.write(data)
+    elif data_type == "ULEB128": ## https://en.wikipedia.org/wiki/LEB128#Encode_unsigned_integer
+        res = []
+        while True:
+            bb = data & 0b1111111
+            data >>= 7
+            if data:
+                bb |= 0b10000000
+            res.append(bb)
+            if not data:
+                break
+        return fobj.write(bytes(res))
+    elif data_type == "Timing point": ## Double - Double - Boolean
+        return serialize_types(fobj, ["Double", "Double", "Boolean"], [i for i in data])
+    elif data_type == "Timing point+": ## int(n) - "Timing point"*n
+        return serialize_type(fobj, "Int", len(data)) + \
+            sum(serialize_type(fobj, "Timing point", i) for i in data)
+    else:
+        raise NotImplementedError('serialize_type(fobj, data_type, data): Unknown data type: "%s".' % data_type)
+
+def serialize_types(fobj, types, data): ## remember to shallow copy berfore calling this
+    # return sum(serialize_type(fobj, types[i], data[i]) for i in range(len(types)))
+    # data = [i for i in data]
+    return sum(serialize_type(fobj, i, data.pop(0)) for i in types)
+
 ### Main Functions ###
 def parse_osu(file_path):
     fobj = open(file_path, "rb")
@@ -152,11 +227,60 @@ def parse_score(file_path):
         raise AssertionError("parse_osu(file_path): file not empty after parsing!")
     return res
 
-if __name__ == "__main__":
-    osu_root_path = r"%localappdata%/osu!"
-    output_json_path =r"./exported_json"
+def serialize_osu(file_path, data):
+    data = [i for i in data] ## shallow copy
+    fobj = open(file_path, "wb")
+    res = serialize_types(fobj, ['Int', 'Int', 'Boolean', 'DateTime', 'String', 'Int'], data)
+    beatmap_data_types = ['String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'String', 'Byte', 'Short', 'Short', 'Short', 'Long', 'Single', 'Single', 'Single', 'Single', 'Double', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int-Double pair*', 'Int', 'Int', 'Int', 'Timing point+', 'Int', 'Int', 'Int', 'Byte', 'Byte', 'Byte', 'Byte', 'Short', 'Single', 'Byte', 'String', 'String', 'Short', 'String', 'Boolean', 'Long', 'Boolean', 'String', 'Long', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Boolean', 'Int', 'Byte']
+    for i in data.pop(0):
+        res += serialize_types(fobj, beatmap_data_types, [j for j in i]) ## shallow copy
+    res += serialize_type(fobj, "Int", data.pop(0))
+    fobj.close()
+    if data:
+        raise AssertionError("serialize_osu(file_path, data): data not empty after serialization!")
+    return res
 
-    import time, json, os
+def serialize_collection(file_path, data):
+    data = [i for i in data] ## shallow copy
+    fobj = open(file_path, "wb")
+    res = serialize_types(fobj, ['Int', 'Int'], data)
+    for i in data.pop(0):
+        res += serialize_types(fobj, ["String", "Int"], i[:2]) ## shallow copy by slicing
+        for j in i[2]:
+            res += serialize_type(fobj, "String", j)
+    fobj.close()
+    if data:
+        raise AssertionError("serialize_collection(file_path, data): data not empty after serialization!")
+    return res
+
+def serialize_score(file_path, data):
+    data = [i for i in data] ## shallow copy
+    fobj = open(file_path, "wb")
+    res = serialize_types(fobj, ['Int', 'Int'], data)
+    score_data_types = ['Byte', 'Int', 'String', 'String', 'String', 'Short', 'Short', 'Short', 'Short', 'Short', 'Short', 'Int', 'Short', 'Boolean', 'Int', 'String', 'Long', 'Int', 'Long']
+    for i in data.pop(0):
+        res += serialize_types(fobj, ["String", "Int"], i[:2]) ## shallow copy by slicing
+        for j in i[2]:
+            res += serialize_types(fobj, score_data_types, [k for k in j])
+    fobj.close()
+    if data:
+        raise AssertionError("serialize_score(file_path, data): data not empty after serialization!")
+    return res
+
+if __name__ == "__main__":
+    ## simple testing code, set path accordingly before running
+
+    ## your osu root path
+    osu_root_path = r"%localappdata%/osu!"
+    ## 2 folders to save output files
+    output_json_path = r"./exported_json"
+    output_serialized_path =  r"./serialized_db" ## should be completely same as original db
+
+    import time, json, os, pickle
+
+    def pkl_dump(obj, fpath):
+        with open(fpath, "wb") as f:
+            pickle.dump(obj, f)
 
     pjoin = os.path.join ## shortcut
 
@@ -169,6 +293,11 @@ if __name__ == "__main__":
     osu_json = pjoin(output_json_path, "osu!.json")
     collection_json = pjoin(output_json_path, "collection.json")
     scores_json = pjoin(output_json_path, "scores.json")
+
+    output_serialized_path = os.path.abspath(os.path.realpath(output_serialized_path))
+    osu_serialized = pjoin(output_serialized_path, "osu!.db")
+    collection_serialized = pjoin(output_serialized_path, "collection.db")
+    scores_serialized = pjoin(output_serialized_path, "scores.db")
 
     input("Press ENTER...")
 
@@ -193,3 +322,29 @@ if __name__ == "__main__":
     with open(scores_json, "w", encoding="utf-8") as wf:
         json.dump(scores_data, wf, ensure_ascii=False, indent=2)
 
+
+    pkl_dump(osu_data, "osu.pkl")
+    pkl_dump(collection_data, "collection.pkl")
+    pkl_dump(scores_data, "score.pkl")
+
+    st = time.time()
+    serialized_size = serialize_osu(osu_serialized, osu_data)
+    print("Serialized osu!.db", time.time()-st)
+    print("Size:", os.path.getsize(osu_db_path), "->", serialized_size)
+    assert os.path.getsize(osu_serialized) == serialized_size, "serialize_osu returns incorrect size!"
+
+    st = time.time()
+    serialized_size = serialize_collection(collection_serialized, collection_data)
+    print("Serialized collection.db", time.time()-st)
+    print("Size:", os.path.getsize(collection_db_path), "->", serialized_size)
+    assert os.path.getsize(collection_serialized) == serialized_size, "serialize_collection returns incorrect size!"
+
+    st = time.time()
+    serialized_size = serialize_score(scores_serialized, scores_data)
+    print("Serialized scores.db", time.time()-st)
+    print("Size:", os.path.getsize(scores_db_path), "->", serialized_size)
+    assert os.path.getsize(scores_serialized) == serialized_size, "serialize_score returns incorrect size!"
+
+    pkl_dump(osu_data, "osu.serialized.pkl")
+    pkl_dump(collection_data, "collection.serialized.pkl")
+    pkl_dump(scores_data, "score.serialized.pkl")
