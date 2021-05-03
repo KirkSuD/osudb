@@ -1,5 +1,11 @@
 # osudb
 
+## Deprecated!
+
+Deprecated! Use the [Kaitai Struct Version](https://github.com/KirkSuD/osu_db_kaitai_struct) instead.
+
+## About
+
 A simple Python module to parse & serialize databases of [osu!](https://osu.ppy.sh), the rhythm game.
 
 Version: 0.2  
